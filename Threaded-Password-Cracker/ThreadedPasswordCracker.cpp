@@ -8,14 +8,18 @@
 #include <bitset>
 #include <mutex>
 #include <chrono>
+#include <ctime>
 #include <stdio.h>
+#include <functional>
+#include <cctype>
+#include <algorithm>
 
 using namespace std;
 
-#define MAX_ATTEMPTS 100
 #define LOWER_ALPHA_START 97
 #define LOWER_ALPHA_END 122
-#define MAX_CHARS 3
+#define MAX_CHARS 5
+#define LOWER_ALPHA "abcdefghijklmnopqrstuvwxyz"
 
 mutex theMutex;
 
@@ -24,26 +28,19 @@ ostream& (*cstream[])(ostream&) =
 blue, green, red, yellow, white
 };
 
-class AsciiBits
-{
-private:
-	vector<bitset<8>> letters;
-public:
-	AsciiBits();
-};
-
-AsciiBits::AsciiBits()
-{
-	bitset<8> initializer("01100001");
-	letters.push_back(initializer);
-}
+auto isFinished = [](auto letter) {return letter == 0; };
+auto resize = [](char *p, char c, int n) { return memset(p, c, n); }; // allocate additional memory for char array
+auto fastPrint = [](char *p, char *n) {
+	fwrite(p, sizeof(char), sizeof(p) - 1, stdout);
+	fwrite(n, sizeof(char), 1, stdout);
+}; // fwrite faster than cout
+auto isQuit = [](string s) { return s == "Q" || s == "q"; };
 
 class PlainTextCracker
 {
 private:
+	string outputPassword;
 	string inputPassword;
-	//string outputPassword;
-	const int pwLength = 3;
 	unsigned long long int attempts;
 	unsigned long long int maxAttempts;
 	long double testMax;
@@ -51,64 +48,258 @@ private:
 	int fastLetter;
 	int slowLetter;
 public:
-	PlainTextCracker(string p);
+	PlainTextCracker();
 	bool bruteForce();
 	void crack();
 	void calculateMaxAttempts();
-	void resizeCharArray();
+	void setPassword(string p);
+	void reset();
 };
 
-PlainTextCracker::PlainTextCracker(string p)
+PlainTextCracker::PlainTextCracker()
 {
 	attempts = 0;
 	maxAttempts = 0;
 	fastLetter = 0;
 	slowLetter = 0;
-	//strcpy(inputPassword, p.c_str());
-	inputPassword = p;
-	//outputPassword = " ";
+	inputPassword = "";
 	charSet = "abcdefghijklmnopqrstuvwxyz";
-	calculateMaxAttempts();
+}
+
+void PlainTextCracker::setPassword(string p)
+{
+	inputPassword = p;
+	
 }
 
 void PlainTextCracker::crack()
 {
+	
 	if (bruteForce())
-		cout << "we found it\n";
-		//cout << "\nThe password is: " << outputPassword << endl;
+		cout << green << "The password is: " << outputPassword << white;
 	else
-		cout << "\nCouldn't find the password!\n";
-	cout << "Total attempts: " << attempts << endl;
+		cout << red << "\nCouldn't find the password!" << white;
+	cout << "\nTotal attempts: " << yellow << attempts << white << endl;
 }
 
 void PlainTextCracker::calculateMaxAttempts()
 {
-	for (int i = 1; i <= pwLength; i++)
+	maxAttempts = 0;
+	for (int i = 1; i <= MAX_CHARS; i++)
 		maxAttempts += pow(charSet.size(), i);
-	cout << "Max attempts for a password of length " << pwLength << ": " << maxAttempts << endl;
+	cout << "Max attempts for a password of length " << MAX_CHARS << ": " << maxAttempts << "\n";
 }
 
-auto lambda = [](auto x, auto y) {return x + y; };
-//bool isAlphaLower = [](char c) {return }
+bool PlainTextCracker::bruteForce()
+{
+	char s[] = "\n";
+	char *newline = s;
+	char guess[MAX_CHARS + 1];
+	int last = charSet.size() - 1;
+
+	resize(guess, '\0', sizeof(guess));
+	guess[0] = charSet[0];
+
+	while (attempts < maxAttempts)
+	{
+		for (int letterIndex = 0; letterIndex < charSet.size(); letterIndex++)
+		{
+			guess[slowLetter] = charSet[letterIndex];
+			//fastPrint(guess, newline);
+			attempts++;
+			if (guess == inputPassword)
+			{
+				outputPassword = guess;
+				return true;
+			}
+
+			if (attempts > maxAttempts) break;
+		}
+		for (fastLetter = slowLetter; fastLetter >= 0; fastLetter--)
+		{
+			if (guess[fastLetter] != charSet[last])
+			{
+				guess[fastLetter]++;
+				break;
+			}
+			else
+			{
+				if (isFinished(fastLetter))
+				{
+					++slowLetter;
+					resize(guess, static_cast<int>(charSet[0]), slowLetter + 1);
+					break;
+				}
+				guess[fastLetter] = charSet[0];
+			}
+		}
+	}
+	return false;
+}
+
+void PlainTextCracker::reset()
+{
+	inputPassword.clear();
+	outputPassword.clear();
+	attempts = 0;
+	slowLetter = 0;
+}
+
+class Timer
+{
+private:
+	chrono::time_point<chrono::system_clock> t1, t2;
+	chrono::duration<double> duration;
+	vector <chrono::duration<double>> runtimeData;
+	time_t end;
+public:
+	Timer();
+	void start();
+	void stop();
+	void calculate();
+	void print();
+	void reset();
+	void batchFinish();
+};
+
+Timer::Timer()
+{
+	
+}
+
+void Timer::start()
+{
+	cout << blue << "Beginning the timer...\n" << white;
+	t1 = chrono::system_clock::now();
+}
+
+void Timer::stop()
+{
+	t2 = chrono::system_clock::now();
+	cout << blue << "Timer has stopped.\n" << white;
+}
+
+void Timer::calculate()
+{
+	duration = t2 - t1;
+	end = chrono::system_clock::to_time_t(t2);
+	runtimeData.push_back(chrono::duration<double>(duration));
+}
+
+void Timer::print()
+{
+	cout << "Finished at: " << blue << std::ctime(&end) << white;
+	cout << "Runtime: " << blue << chrono::duration <double, milli>(duration).count() << " ms\n" << white;
+}
+
+void Timer::reset()
+{
+	duration.zero();
+}
+
+void Timer::batchFinish()
+{
+	stop();
+	calculate();
+	print();
+	reset();
+}
 
 void printAscii(int start, int limit);
 void fun();
-void bruteforce(const string &charSet);
+
+class Password
+{
+private:
+	string password;
+	string charSet;
+public:
+	Password();
+	void setPassword(string p);
+	string promptUser();
+	void trim(string s);
+	string getPassword();
+	void setType(string set);
+	function<bool(string)> isQuit;
+	bool isValid(string s);
+};
+
+Password::Password()
+{
+	password = "z";
+	charSet = "";
+	this->isQuit = [](string s) { return s == "Q" || s == "q"; };
+}
+
+bool Password::isValid(string s)
+{
+	if (all_of(s.begin(), s.end(), [](char c) { return isalpha(c); }))
+		return true;
+	cout << red << "This password contains invalid characters for the selected set!\n";
+	cout << "Use only the following characters: " << charSet << "\n" << white;
+	return false;
+}
+
+void Password::setPassword(string p)
+{
+	password = p;
+}
+
+void Password::setType(string set)
+{
+	charSet = set;
+}
+
+string Password::promptUser()
+{
+	do
+	{
+		password.clear();
+		cout << "\nPlease type in a password: ";
+		getline(cin, password);
+		trim(password);
+	} while (!isValid(password));
+	return password;
+}
+
+void Password::trim(string text)
+{
+	string whitespace = "\040\t";
+	auto front = text.find_first_not_of(whitespace);
+	auto back = text.find_last_not_of(whitespace);
+	auto length = back - front + 1;
+	text.substr(front, length);
+}
+
+string Password::getPassword()
+{
+	return password;
+}
+
+
 
 int main()
 {
 	cout << "This program will guess your password.\n";
-	string password;
+	cout << "You may only use a-z, and 1-5 characters.\n";
+	Password password;
+	Timer timer;
+	PlainTextCracker plaintext;
+	plaintext.calculateMaxAttempts();
+	string input = " ";
+	password.setType(LOWER_ALPHA);
 
-	cout << "Please type in a password: ";
-	getline(cin, password);
+	while (!isQuit(input))
+	{
+		input.clear();
+		input = password.promptUser();
+		plaintext.setPassword(password.getPassword());
+		timer.start();
+		plaintext.crack();
+		timer.batchFinish();
+		plaintext.reset();
+	}
 
-	PlainTextCracker plaintext(password);
-	plaintext.crack();
-	
-
-	//int f = lambda(1, 2);
-	//cout << f << endl;
 	// OR call the function before starting the thread!
 	//thread t1(printAscii, 32, 79);
 	//fun();
@@ -116,63 +307,9 @@ int main()
 	//t1.join(); // JOIN the thread before executing other functions.
 	//t2.join();
 
-
-
 	system("pause");
 	return 0;
 }
-
-auto isFinished = [](auto letter) {return letter == 0; };
-auto resize = [](char *p, char c, int n) { return memset(p, c, n); }; // allocate additional memory for char array
-auto fastPrint = [](char *p, char *n) { 
-	fwrite(p, sizeof(char), sizeof(p) - 1, stdout); 
-	fwrite(n, sizeof(char), 1, stdout);
-}; // fwrite faster than cout
-
-bool PlainTextCracker::bruteForce()
-{
-	char s[] = "\n";
-	char *newline = s;
-	char outputPassword[MAX_CHARS + 1];
-	int last = charSet.size() - 1;
-
-	resize(outputPassword, '\0', sizeof(outputPassword));
-	outputPassword[0] = charSet[0];
-
-	while (attempts < maxAttempts)
-	{
-		for (int letterIndex = 0; letterIndex < charSet.size(); letterIndex++) 
-		{
-			outputPassword[slowLetter] = charSet[letterIndex];
-			fastPrint(outputPassword, newline);
-			attempts++;
-			if (outputPassword == inputPassword)
-				return true;
-			if (attempts > maxAttempts) break;
-		}
-		for (fastLetter = slowLetter; fastLetter >= 0; fastLetter--) 
-		{
-			if (outputPassword[fastLetter] != charSet[last])
-			{
-				outputPassword[fastLetter]++;
-				break;
-			}
-			else 
-			{
-				if (isFinished(fastLetter))
-				{
-					++slowLetter;
-					resize(outputPassword, static_cast<int>(charSet[0]), slowLetter + 1);
-					break;
-				}
-				outputPassword[fastLetter] = charSet[0];
-			}
-		}
-	}
-	return false;
-}
-
-
 
 void fun()
 {
