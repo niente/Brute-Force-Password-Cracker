@@ -1,3 +1,5 @@
+#define _CRT_SECURE_NO_DEPRECATE
+
 #include <iostream>
 #include <string>
 #include <regex>
@@ -6,10 +8,14 @@
 #include <bitset>
 #include <mutex>
 #include <chrono>
+#include <stdio.h>
 
 using namespace std;
 
 #define MAX_ATTEMPTS 100
+#define LOWER_ALPHA_START 97
+#define LOWER_ALPHA_END 122
+#define MAX_CHARS 3
 
 mutex theMutex;
 
@@ -18,43 +24,76 @@ ostream& (*cstream[])(ostream&) =
 blue, green, red, yellow, white
 };
 
+class AsciiBits
+{
+private:
+	vector<bitset<8>> letters;
+public:
+	AsciiBits();
+};
+
+AsciiBits::AsciiBits()
+{
+	bitset<8> initializer("01100001");
+	letters.push_back(initializer);
+}
+
 class PlainTextCracker
 {
 private:
 	string inputPassword;
-	string outputPassword;
-	int pwLength;
-	int iterations;
-
+	//string outputPassword;
+	const int pwLength = 3;
+	unsigned long long int attempts;
+	unsigned long long int maxAttempts;
+	long double testMax;
+	string charSet;
+	int fastLetter;
+	int slowLetter;
 public:
 	PlainTextCracker(string p);
 	bool bruteForce();
 	void crack();
+	void calculateMaxAttempts();
+	void resizeCharArray();
 };
 
 PlainTextCracker::PlainTextCracker(string p)
 {
-	iterations = 0;
+	attempts = 0;
+	maxAttempts = 0;
+	fastLetter = 0;
+	slowLetter = 0;
+	//strcpy(inputPassword, p.c_str());
 	inputPassword = p;
-	outputPassword = "";
-	pwLength = 2;
+	//outputPassword = " ";
+	charSet = "abcdefghijklmnopqrstuvwxyz";
+	calculateMaxAttempts();
 }
 
 void PlainTextCracker::crack()
 {
 	if (bruteForce())
-		cout << "\nThe password is: " << outputPassword << endl;
+		cout << "we found it\n";
+		//cout << "\nThe password is: " << outputPassword << endl;
 	else
 		cout << "\nCouldn't find the password!\n";
-	cout << "Total attempts: " << iterations << endl;
+	cout << "Total attempts: " << attempts << endl;
+}
+
+void PlainTextCracker::calculateMaxAttempts()
+{
+	for (int i = 1; i <= pwLength; i++)
+		maxAttempts += pow(charSet.size(), i);
+	cout << "Max attempts for a password of length " << pwLength << ": " << maxAttempts << endl;
 }
 
 auto lambda = [](auto x, auto y) {return x + y; };
 //bool isAlphaLower = [](char c) {return }
 
-void guesser(string p);
 void printAscii(int start, int limit);
 void fun();
+void bruteforce(const string &charSet);
 
 int main()
 {
@@ -79,54 +118,57 @@ int main()
 
 
 
-
 	system("pause");
 	return 0;
 }
 
+auto isFinished = [](auto letter) {return letter == 0; };
+auto resize = [](char *p, char c, int n) { return memset(p, c, n); }; // allocate additional memory for char array
+auto fastPrint = [](char *p, char *n) { 
+	fwrite(p, sizeof(char), sizeof(p) - 1, stdout); 
+	fwrite(n, sizeof(char), 1, stdout);
+}; // fwrite faster than cout
+
 bool PlainTextCracker::bruteForce()
 {
-	string temp = "";
-	string assist = "";
-	int i = 1, n;
-	outputPassword.resize(2);
+	char s[] = "\n";
+	char *newline = s;
+	char outputPassword[MAX_CHARS + 1];
+	int last = charSet.size() - 1;
 
-	//while (iterations < MAX_ATTEMPTS)
-	//{
-	//	for (int c = 97; c < 123; c++)
-	//	{
-	//		outputPassword[i - 1] = static_cast<char>(c);
-	//		cout << outputPassword << endl;
-	//		if (iterations++ >= MAX_ATTEMPTS) break;
-	//	}
-	//	for (n = i; n >= 0; n--)
-	//	{
-	//		for (int j = 97; j < 123; j++)
-	//			outputPassword[n] = static_cast<char>(j);
-	//		if (n == 0)
-	//		{
-	//			++i;
-	//		}
-	//		outputPassword.resize(i + 1);
-	//		outputPassword[n] = static_cast<char>(97);
-	//	}
-	//}
+	resize(outputPassword, '\0', sizeof(outputPassword));
+	outputPassword[0] = charSet[0];
 
-
-	//for (int i = 0; i < pwLength; i++)
-	//{
-	//	for (int c = 97; c < 123; c++) // 32 - 127 = printable ascii. 97-123 = a-z
-	//	{
-	//		cout << static_cast<char>(c);
-	//		outputPassword[i] = static_cast<char>(c);
-	//		assist = + static_cast<char>(c);
-	//		cout << temp << endl;
-	//		iterations++;
-	//		if (outputPassword == inputPassword)
-	//			return true;
-	//	}
-	//	assist = 
-	//}
+	while (attempts < maxAttempts)
+	{
+		for (int letterIndex = 0; letterIndex < charSet.size(); letterIndex++) 
+		{
+			outputPassword[slowLetter] = charSet[letterIndex];
+			fastPrint(outputPassword, newline);
+			attempts++;
+			if (outputPassword == inputPassword)
+				return true;
+			if (attempts > maxAttempts) break;
+		}
+		for (fastLetter = slowLetter; fastLetter >= 0; fastLetter--) 
+		{
+			if (outputPassword[fastLetter] != charSet[last])
+			{
+				outputPassword[fastLetter]++;
+				break;
+			}
+			else 
+			{
+				if (isFinished(fastLetter))
+				{
+					++slowLetter;
+					resize(outputPassword, static_cast<int>(charSet[0]), slowLetter + 1);
+					break;
+				}
+				outputPassword[fastLetter] = charSet[0];
+			}
+		}
+	}
 	return false;
 }
 
@@ -158,14 +200,14 @@ bool isSpecialChar(string p)
 
 void printAscii(int startIndex, int limit)
 {
-	//cout << (char)7 << "\n"; // ASCII #7 = BELL
+	//cout << (char)7 << "\fastLetter"; // ASCII #7 = BELL
 	int j = 0;
 	for (int i = startIndex; i < limit; i++)
 	{
-		//lock_guard<mutex> guard(theMutex); // this makes it so only ONE thread executes this function at a time, until it finishes (exits scope)
-		theMutex.lock(); // a good way to protect only one line (1/2)
+		//lock_guard<mutex> guard(theMutex); // this makes it so only ONE thread executes this function at letterIndex time, until it finishes (exits scope)
+		theMutex.lock(); // letterIndex good way to protect only one line (1/2)
 		cout << this_thread::get_id() << ": " << i << ":[" << (char)i << "]\t";
-		theMutex.unlock();  // a good way to protect only one line (2/2)
+		theMutex.unlock();  // letterIndex good way to protect only one line (2/2)
 		if ((i + 1) % 5 == 0)
 		{
 			cout << "\n";
