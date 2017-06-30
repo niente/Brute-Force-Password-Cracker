@@ -19,8 +19,8 @@ using namespace std;
 
 #define LOWER_ALPHA_START 97
 #define LOWER_ALPHA_END 122
-#define MAX_CHARS 5
-#define LOWER_ALPHA "abcdefghijklmnopqrstuvwxyz"
+#define MAX_CHARS 2
+#define LOWER_ALPHA "abcdef" //"abcdefghijklmnopqrstuvwxyz"
 
 typedef chrono::duration<double> Runtime;
 
@@ -50,7 +50,12 @@ private:
 	string charSet;
 	int fastLetter;
 	int slowLetter;
+	bool found;
 	int i;
+	thread t1;
+	//thread t2;
+	void startThread();
+	void stopThread();
 public:
 	PlainTextCracker();
 	bool bruteForce(int start);
@@ -58,6 +63,7 @@ public:
 	void calculateMaxAttempts();
 	void setPassword(string p);
 	void reset();
+	void setType(string s);
 };
 
 PlainTextCracker::PlainTextCracker()
@@ -68,7 +74,8 @@ PlainTextCracker::PlainTextCracker()
 	slowLetter = 0;
 	i = 0;
 	inputPassword = "";
-	charSet = "abcdefghijklmnopqrstuvwxyz";
+	charSet = "";
+	found = false;
 }
 
 void PlainTextCracker::setPassword(string p)
@@ -77,14 +84,38 @@ void PlainTextCracker::setPassword(string p)
 	
 }
 
+void PlainTextCracker::setType(string set)
+{
+	charSet = set;
+}
+
+// OR call the function before starting the thread!
+//thread t1(printAscii, 32, 79);
+//fun();
+//thread t2(printAscii, 80, 127);
+//t1.join(); // JOIN the thread before executing other functions.
+//t2.join();
+
 void PlainTextCracker::crack()
 {
-	
-	if (bruteForce(i))
+	/// start threads here.
+	/// one thread gets 0, one gets 13
+	/// write something that stops both threads if one of them finds the password
+	/// compare the runtime for these
+	/// (4 char pws ~64ms without threading)
+	startThread();
+	stopThread();
+	if (found)
 		cout << green << "The password is: " << outputPassword << white;
 	else
 		cout << red << "\nCouldn't find the password!" << white;
 	cout << "\nTotal attempts: " << yellow << attempts << white << endl;
+}
+
+void PlainTextCracker::startThread()
+{
+	//t1 = thread(std::bind(&PlainTextCracker::bruteForce, 0));
+	t1 = thread(&PlainTextCracker::bruteForce, this, 0);
 }
 
 void PlainTextCracker::calculateMaxAttempts()
@@ -102,6 +133,8 @@ bool PlainTextCracker::bruteForce(int i)
 	char guess[MAX_CHARS + 1];
 	int last = charSet.size() - 1;
 
+	cout << "charSet: " << charSet << endl;
+
 	resize(guess, '\0', sizeof(guess));
 	//guess[0] = charSet[0];
 	guess[i] = charSet[i];
@@ -111,11 +144,17 @@ bool PlainTextCracker::bruteForce(int i)
 		for (int letterIndex = i; letterIndex < charSet.size(); letterIndex++)
 		{
 			guess[slowLetter] = charSet[letterIndex];
-			//fastPrint(guess, newline);
+			theMutex.lock(); // LOCK
+			cout << this_thread::get_id() << ": ";
+			cout << "guess: " << guess << " charSet[i]: " << charSet[letterIndex] << "\n";
+			fastPrint(guess, newline);
 			attempts++;
+			theMutex.unlock();  // UNLOCK
 			if (guess == inputPassword)
 			{
 				outputPassword = guess;
+				
+				found = true;
 				return true;
 			}
 
@@ -143,6 +182,11 @@ bool PlainTextCracker::bruteForce(int i)
 	return false;
 }
 
+void PlainTextCracker::stopThread()
+{
+	t1.join();
+}
+
 void PlainTextCracker::reset()
 {
 	inputPassword.clear();
@@ -168,6 +212,8 @@ public:
 	void batchFinish();
 	vector<Runtime> getRuntimeData();
 };
+
+
 
 //Timer::Timer()
 //{
@@ -231,6 +277,7 @@ public:
 	void setType(string set);
 	function<bool(string)> isQuit;
 	bool isValid(string s);
+	function<bool(char)> isInSet;
 };
 
 Password::Password()
@@ -238,11 +285,17 @@ Password::Password()
 	password = "z";
 	charSet = "";
 	this->isQuit = [](string s) { return s == "Q" || s == "q"; };
+	this->isInSet = [&](char c) 
+	{ 
+		for (auto i : charSet) if (c == i) 
+			return true; 
+		return false;
+	};
 }
 
 bool Password::isValid(string s)
 {
-	if (all_of(s.begin(), s.end(), [](char c) { return isalpha(c); }))
+	if (all_of(s.begin(), s.end(), [&](char c) { return isInSet(c); }))
 		return true;
 	cout << red << "This password contains invalid characters for the selected set!\n";
 	cout << "Use only the following characters: " << charSet << "\n" << white;
@@ -266,6 +319,8 @@ string Password::promptUser()
 		password.clear();
 		cout << "\nPlease type in a password: ";
 		getline(cin, password);
+		if (isQuit(password))
+			return password;
 		trim(password);
 	} while (!isValid(password));
 	return password;
@@ -315,21 +370,27 @@ void Statistics::average()
 void printAscii(int start, int limit);
 void fun();
 
+///////////////////////////////////////////
+
 int main()
 {
 	cout << "This program will guess your password.\n";
 	cout << "You may only use a-z, and 1-5 characters.\n";
+	cout << "Type Q to quit.\n";
 	Password password;
 	Timer timer;
 	PlainTextCracker plaintext;
-	plaintext.calculateMaxAttempts();
 	string input = " ";
 	password.setType(LOWER_ALPHA);
+	plaintext.setType(LOWER_ALPHA);
+	plaintext.calculateMaxAttempts();
 
 	while (!isQuit(input))
 	{
 		input.clear();
 		input = password.promptUser();
+		if (isQuit(input))
+			break;
 		plaintext.setPassword(password.getPassword());
 		timer.start();
 		plaintext.crack();
@@ -359,21 +420,6 @@ void fun()
 	cout << "are happening while";
 	cout << " a thread is running ";
 	cout << "from a previous statement?\n";
-}
-
-bool isAlphaUpper(string p)
-{
-	return true;
-}
-
-bool isDigit(string p)
-{
-	return true;
-}
-
-bool isSpecialChar(string p)
-{
-	return true;
 }
 
 void printAscii(int startIndex, int limit)
