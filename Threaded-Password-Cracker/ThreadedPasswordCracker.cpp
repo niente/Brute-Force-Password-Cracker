@@ -13,6 +13,7 @@
 #include <functional>
 #include <cctype>
 #include <algorithm>
+#include <numeric>
 
 using namespace std;
 
@@ -20,6 +21,8 @@ using namespace std;
 #define LOWER_ALPHA_END 122
 #define MAX_CHARS 5
 #define LOWER_ALPHA "abcdefghijklmnopqrstuvwxyz"
+
+typedef chrono::duration<double> Runtime;
 
 mutex theMutex;
 
@@ -47,9 +50,10 @@ private:
 	string charSet;
 	int fastLetter;
 	int slowLetter;
+	int i;
 public:
 	PlainTextCracker();
-	bool bruteForce();
+	bool bruteForce(int start);
 	void crack();
 	void calculateMaxAttempts();
 	void setPassword(string p);
@@ -62,6 +66,7 @@ PlainTextCracker::PlainTextCracker()
 	maxAttempts = 0;
 	fastLetter = 0;
 	slowLetter = 0;
+	i = 0;
 	inputPassword = "";
 	charSet = "abcdefghijklmnopqrstuvwxyz";
 }
@@ -75,7 +80,7 @@ void PlainTextCracker::setPassword(string p)
 void PlainTextCracker::crack()
 {
 	
-	if (bruteForce())
+	if (bruteForce(i))
 		cout << green << "The password is: " << outputPassword << white;
 	else
 		cout << red << "\nCouldn't find the password!" << white;
@@ -90,7 +95,7 @@ void PlainTextCracker::calculateMaxAttempts()
 	cout << "Max attempts for a password of length " << MAX_CHARS << ": " << maxAttempts << "\n";
 }
 
-bool PlainTextCracker::bruteForce()
+bool PlainTextCracker::bruteForce(int i)
 {
 	char s[] = "\n";
 	char *newline = s;
@@ -98,11 +103,12 @@ bool PlainTextCracker::bruteForce()
 	int last = charSet.size() - 1;
 
 	resize(guess, '\0', sizeof(guess));
-	guess[0] = charSet[0];
+	//guess[0] = charSet[0];
+	guess[i] = charSet[i];
 
 	while (attempts < maxAttempts)
 	{
-		for (int letterIndex = 0; letterIndex < charSet.size(); letterIndex++)
+		for (int letterIndex = i; letterIndex < charSet.size(); letterIndex++)
 		{
 			guess[slowLetter] = charSet[letterIndex];
 			//fastPrint(guess, newline);
@@ -127,10 +133,10 @@ bool PlainTextCracker::bruteForce()
 				if (isFinished(fastLetter))
 				{
 					++slowLetter;
-					resize(guess, static_cast<int>(charSet[0]), slowLetter + 1);
+					resize(guess, static_cast<int>(charSet[i]), slowLetter + 1);
 					break;
 				}
-				guess[fastLetter] = charSet[0];
+				guess[fastLetter] = charSet[i];
 			}
 		}
 	}
@@ -149,23 +155,24 @@ class Timer
 {
 private:
 	chrono::time_point<chrono::system_clock> t1, t2;
-	chrono::duration<double> duration;
-	vector <chrono::duration<double>> runtimeData;
+	Runtime duration;
+	vector <Runtime> runtimeData;
 	time_t end;
 public:
-	Timer();
+	//Timer();
 	void start();
 	void stop();
 	void calculate();
 	void print();
 	void reset();
 	void batchFinish();
+	vector<Runtime> getRuntimeData();
 };
 
-Timer::Timer()
-{
-	
-}
+//Timer::Timer()
+//{
+//	
+//}
 
 void Timer::start()
 {
@@ -205,8 +212,10 @@ void Timer::batchFinish()
 	reset();
 }
 
-void printAscii(int start, int limit);
-void fun();
+vector<Runtime> Timer::getRuntimeData()
+{
+	return runtimeData;
+}
 
 class Password
 {
@@ -276,7 +285,35 @@ string Password::getPassword()
 	return password;
 }
 
+class Statistics
+{
+private:
+	vector<Runtime> runtimes;
+	Runtime avg;
+	Runtime total;
+public:
+	Statistics(vector<Runtime> data);
+	void average();
+};
 
+Statistics::Statistics(vector<Runtime> data)
+{
+	runtimes = data;
+	total.zero();
+	avg.zero();
+}
+
+void Statistics::average()
+{
+	for (int i = 0; i < runtimes.size(); i++)
+		total += runtimes[i];
+	avg = total / (runtimes.size());
+	cout << "Average runtime: " << blue << static_cast<chrono::duration <double, milli>>(avg).count() << "ms\n" << white;
+
+}
+
+void printAscii(int start, int limit);
+void fun();
 
 int main()
 {
@@ -299,6 +336,10 @@ int main()
 		timer.batchFinish();
 		plaintext.reset();
 	}
+
+	// calculate runtime data
+	Statistics statistics(timer.getRuntimeData());
+	statistics.average();
 
 	// OR call the function before starting the thread!
 	//thread t1(printAscii, 32, 79);
@@ -341,10 +382,10 @@ void printAscii(int startIndex, int limit)
 	int j = 0;
 	for (int i = startIndex; i < limit; i++)
 	{
-		//lock_guard<mutex> guard(theMutex); // this makes it so only ONE thread executes this function at letterIndex time, until it finishes (exits scope)
-		theMutex.lock(); // letterIndex good way to protect only one line (1/2)
+		//lock_guard<mutex> guard(theMutex); // this makes it so only ONE thread executes this function at a time, until it finishes (exits scope)
+		theMutex.lock(); // a good way to protect only one line (1/2)
 		cout << this_thread::get_id() << ": " << i << ":[" << (char)i << "]\t";
-		theMutex.unlock();  // letterIndex good way to protect only one line (2/2)
+		theMutex.unlock();  // a good way to protect only one line (2/2)
 		if ((i + 1) % 5 == 0)
 		{
 			cout << "\n";
