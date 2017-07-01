@@ -3,10 +3,8 @@
 #include <iostream>
 #include <string>
 #include <regex>
-#include <thread>
 #include "ConsoleColor.h"
 #include <bitset>
-#include <mutex>
 #include <chrono>
 #include <ctime>
 #include <stdio.h>
@@ -14,7 +12,6 @@
 #include <cctype>
 #include <algorithm>
 #include <numeric>
-#include <condition_variable>
 #include <future>
 #include <atomic>
 
@@ -27,8 +24,7 @@ using namespace std;
 #define DUMMY_TRAILER "\177"
 
 typedef chrono::duration<double> Runtime;
-
-mutex theMutex;
+typedef chrono::duration <double, milli> PrintableRuntime;
 
 ostream& (*cstream[])(ostream&) =
 {
@@ -55,6 +51,9 @@ private:
 	int fastLetter;
 	int slowLetter;
 	atomic<bool> found;
+	future<string> answer;
+	vector <string> pwset;
+	vector<unsigned long long int> attemptset;
 public:
 	PlainTextCracker();
 	string bruteForce();
@@ -63,7 +62,8 @@ public:
 	void setPassword(string p);
 	void reset();
 	void setType(string s);
-	
+	vector<unsigned long long int> getAttempts();
+	vector<string> getPwset();
 };
 
 PlainTextCracker::PlainTextCracker()
@@ -89,8 +89,8 @@ void PlainTextCracker::setType(string set)
 
 void PlainTextCracker::crack()
 {
-	future<string> outputPassword = async(launch::deferred, &PlainTextCracker::bruteForce, this);
-	string result = outputPassword.get();
+	answer = async(launch::deferred, &PlainTextCracker::bruteForce, this);
+	string result = answer.get();
 	if (result != DUMMY_TRAILER)
 		cout << green << "The password is: " << result << white;
 	else
@@ -128,6 +128,8 @@ string PlainTextCracker::bruteForce()
 			if (guess == inputPassword)
 			{
 				outputPassword = guess;
+				pwset.push_back(outputPassword);
+				attemptset.push_back(attempts);
 				found = true;
 				return outputPassword;
 			}
@@ -162,6 +164,16 @@ void PlainTextCracker::reset()
 	attempts = 0;
 	slowLetter = 0;
 	found = false;
+}
+
+vector<unsigned long long int> PlainTextCracker::getAttempts()
+{
+	return attemptset;
+}
+
+vector<string> PlainTextCracker::getPwset()
+{
+	return pwset;
 }
 
 class Timer
@@ -203,7 +215,7 @@ void Timer::calculate()
 void Timer::print()
 {
 	cout << "Finished at: " << blue << std::ctime(&end) << white;
-	cout << "Runtime: " << blue << chrono::duration <double, milli>(duration).count() << " ms\n" << white;
+	cout << "Runtime: " << blue << PrintableRuntime(duration).count() << " ms\n" << white;
 }
 
 void Timer::reset()
@@ -256,11 +268,11 @@ Password::Password()
 
 bool Password::isValid(string s)
 {
-	if (!s.empty())
+	if (!s.empty() && s.size() <= MAX_CHARS)
 		if (all_of(s.begin(), s.end(), [&](char c) { return isInSet(c); }))
 			return true;
-	cout << red << "This password contains invalid characters for the selected set!\n";
-	cout << "Use only the following characters: " << charSet << "\n" << white;
+	cout << red << "This password is invalid for the selected set!\n";
+	cout << "Use up to " << MAX_CHARS << " of the following characters: " << charSet << "\n" << white;
 	return false;
 }
 
@@ -308,27 +320,75 @@ class Statistics
 {
 private:
 	vector<Runtime> runtimes;
+	vector<unsigned long long int> attempts;
+	vector<string> passwords;
 	Runtime avg;
-	Runtime total;
+	Runtime min;
+	Runtime max;
+	double avg_len;
 public:
-	Statistics(vector<Runtime> data);
-	void average();
+	Statistics();
+	void averageRuntime();
+	void averageLength();
+	void summary();
+	void calculate();
+	void setRuntimes(vector<Runtime> r);
+	void setAttempts(vector<unsigned long long int> a);
+	void setPasswords(vector<string> p);
 };
 
-Statistics::Statistics(vector<Runtime> data)
+Statistics::Statistics()
 {
-	runtimes = data;
-	total.zero();
 	avg.zero();
+	min.zero();
+	max.zero();
 }
 
-void Statistics::average()
+void Statistics::setRuntimes(vector<Runtime> r)
 {
+	runtimes = r;
+}
+
+void Statistics::setAttempts(vector<unsigned long long int> a)
+{
+	attempts = a;
+}
+
+void Statistics::setPasswords(vector<string> p)
+{
+	passwords = p;
+}
+
+void Statistics::calculate()
+{
+	min = *min_element(runtimes.begin(), runtimes.end());
+	max = *max_element(runtimes.begin(), runtimes.end());
+	averageLength();
+	averageRuntime();
+}
+
+void Statistics::averageRuntime()
+{
+	Runtime total;
 	for (int i = 0; i < runtimes.size(); i++)
 		total += runtimes[i];
 	avg = total / (runtimes.size());
-	cout << "Average runtime: " << blue << static_cast<chrono::duration <double, milli>>(avg).count() << "ms\n" << white;
+}
 
+void Statistics::averageLength()
+{
+	int total;
+	for (auto i : passwords)
+		total += i.length();
+	avg_len = total / passwords.size();
+}
+
+void Statistics::summary()
+{
+	cout << "Average runtime: " << blue << static_cast<PrintableRuntime>(avg).count();
+	cout << "ms for " << passwords.size() << " passwords.\n" << white;
+	cout << "Min runtime: " << green << static_cast<PrintableRuntime>(min).count() << "ms\t" << white;
+	cout << "Max runtime: " << red << static_cast<PrintableRuntime>(max).count() << "ms\n" << white;
 }
 
 int main()
@@ -358,8 +418,12 @@ int main()
 	}
 
 	// calculate runtime data
-	Statistics statistics(timer.getRuntimeData());
-	statistics.average();
+	Statistics statistics;
+	statistics.setRuntimes(timer.getRuntimeData());
+	statistics.setPasswords(plaintext.getPwset());
+	statistics.setAttempts(plaintext.getAttempts());
+	statistics.calculate();
+	statistics.summary();
 
 	system("pause");
 	return 0;
