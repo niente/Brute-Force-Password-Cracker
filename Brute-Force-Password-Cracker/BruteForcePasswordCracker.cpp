@@ -408,7 +408,6 @@ void Statistics::calculate()
 	avg_len = totalLetters / pwData.size();
 }
 
-
 void Statistics::summary()
 {
 	cout << "Average runtime: " << blue << static_cast<PrintableRuntime>(avg_run).count();
