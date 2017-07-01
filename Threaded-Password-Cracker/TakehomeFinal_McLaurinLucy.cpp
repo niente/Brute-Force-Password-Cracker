@@ -1,29 +1,3 @@
-/*   CIS 29 - Lucy McLaurin - Final Lab - Spring 2017
-
-Brute Force Password Cracker
-----------------------------
-
-Instructions:
-
-Write an asynchronous brute-force password cracker that utilizes lambda functions and functors.
-Simple premise: the password is stored in plaintext.
-- Assume we do not know the length of the password, or what type of character each 
-is (i.e. A-Z 0-9...), but it can only contain printable ascii characters.
-
-1. Accept user input of their "password" into a string. Validate the input based on 
-a predefined set of characters (i.e. a-z, A-Z, 0-9).
-2. Calculate the maximum number of possible attempts for your character set and
-password length.
-3. Using a brute-force algorithm, test each possible combination of characters vs. 
-the password until a match is found.
-4. Call the algorithm asynchronously to decrease runtime.
-5. Use std::chrono to calculate runtime of the crack, and count the total number 
-of attempts before the password was found.
-6. Print statistics on the password set & runtimes (fastest and slowest find, 
-# attempts for each, average password length, average runtime).
-
-*/
-
 #define _CRT_SECURE_NO_DEPRECATE
 
 #include <iostream>
@@ -61,14 +35,18 @@ void printVector(const T& inputVector)
 	cout << "\n";
 }
 
-auto isFinished = [](auto letter) {return letter == 0; };
+// lambdas
+auto isFinished = [](auto letter) {return letter == 0; }; // to clean brute force algorithm
 auto resize = [](char *p, char c, int n) { return memset(p, c, n); }; // allocate additional memory for char array
 auto fastPrint = [](char *p, char *n) {
 	fwrite(p, sizeof(char), sizeof(p) - 1, stdout);
 	fwrite(n, sizeof(char), 1, stdout);
-}; // fwrite faster than cout
-auto isQuit = [](string s) { return s == "Q" || s == "q"; };
+}; // fwrite is faster than cout
+auto isQuit = [](string s) { return s == "Q" || s == "q"; }; // check if user input says to exit program
 
+// accepts password as input, performs brute force crack.
+// uses async to execute the brute force function
+// counts n attempts, and builds a vector of passwords the user has entered
 class PlainTextCracker
 {
 private:
@@ -128,6 +106,7 @@ void PlainTextCracker::crack()
 	cout << "\nTotal attempts: " << yellow << attempts << white << endl;
 }
 
+// max attempts: polynomial sum (1 - pw_size) = available_characters^n
 void PlainTextCracker::calculateMaxAttempts()
 {
 	maxAttempts = 0;
@@ -136,6 +115,7 @@ void PlainTextCracker::calculateMaxAttempts()
 	cout << "Max attempts for a password of length " << MAX_CHARS << ": " << maxAttempts << "\n";
 }
 
+// passes resulting pw to future
 string PlainTextCracker::bruteForce()
 {
 	char s[] = "\n";
@@ -206,6 +186,7 @@ vector<string> PlainTextCracker::getPwset()
 	return pwset;
 }
 
+// measure runtime of each search
 class Timer
 {
 private:
@@ -266,6 +247,7 @@ vector<Runtime> Timer::getRuntimeData()
 	return runtimeData;
 }
 
+// validate user input based on #defined character set
 class Password
 {
 private:
@@ -346,6 +328,7 @@ string Password::getPassword()
 	return password;
 }
 
+// container for results
 class PasswordData
 {
 public:
@@ -370,6 +353,7 @@ ostream &operator<<(ostream &os, const PasswordData &pwData)
 	return os;
 }
 
+// calculates min, max, avg on password data
 class Statistics
 {
 private:
