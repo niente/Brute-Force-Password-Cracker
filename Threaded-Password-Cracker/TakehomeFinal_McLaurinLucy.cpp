@@ -1,6 +1,33 @@
+/*   CIS 29 - Lucy McLaurin - Final Lab - Spring 2017
+
+Brute Force Password Cracker
+----------------------------
+
+Instructions:
+
+Write an asynchronous brute-force password cracker that utilizes lambda functions and functors.
+Simple premise: the password is stored in plaintext.
+- Assume we do not know the length of the password, or what type of character each 
+is (i.e. A-Z 0-9...), but it can only contain printable ascii characters.
+
+1. Accept user input of their "password" into a string. Validate the input based on 
+a predefined set of characters (i.e. a-z, A-Z, 0-9).
+2. Calculate the maximum number of possible attempts for your character set and
+password length.
+3. Using a brute-force algorithm, test each possible combination of characters vs. 
+the password until a match is found.
+4. Call the algorithm asynchronously to decrease runtime.
+5. Use std::chrono to calculate runtime of the crack, and count the total number 
+of attempts before the password was found.
+6. Print statistics on the password set & runtimes (fastest and slowest find, 
+# attempts for each, average password length, average runtime).
+
+*/
+
 #define _CRT_SECURE_NO_DEPRECATE
 
 #include <iostream>
+#include <iomanip>
 #include <string>
 #include <regex>
 #include "ConsoleColor.h"
@@ -17,8 +44,6 @@
 
 using namespace std;
 
-#define LOWER_ALPHA_START 97
-#define LOWER_ALPHA_END 122
 #define MAX_CHARS 5
 #define LOWER_ALPHA "abcdefghijklmnopqrstuvwxyz"
 #define DUMMY_TRAILER "\177"
@@ -26,10 +51,15 @@ using namespace std;
 typedef chrono::duration<double> Runtime;
 typedef chrono::duration <double, milli> PrintableRuntime;
 
-ostream& (*cstream[])(ostream&) =
+///    printVector
+// Template which prints contents of a vector of any type.
+template <typename T>
+void printVector(const T& inputVector)
 {
-blue, green, red, yellow, white
-};
+	for (auto i = inputVector.begin(); i != inputVector.end(); ++i)
+		cout << *i;
+	cout << "\n";
+}
 
 auto isFinished = [](auto letter) {return letter == 0; };
 auto resize = [](char *p, char c, int n) { return memset(p, c, n); }; // allocate additional memory for char array
@@ -316,79 +346,103 @@ string Password::getPassword()
 	return password;
 }
 
+class PasswordData
+{
+public:
+	Runtime runtime;
+	unsigned long long int attempts;
+	string password;
+	PasswordData(Runtime r, unsigned long long int a, string p);
+	friend ostream &operator<<(ostream &os, const PasswordData &pwData);
+};
+
+PasswordData::PasswordData(Runtime r, unsigned long long int a, string p)
+{
+	runtime = r;
+	attempts = a;
+	password = p;
+}
+
+ostream &operator<<(ostream &os, const PasswordData &pwData)
+{
+	os << static_cast<PrintableRuntime>(pwData.runtime).count() << "ms to find [";
+	os << pwData.password << "] in " << pwData.attempts << " attempts.\n";
+	return os;
+}
+
 class Statistics
 {
 private:
-	vector<Runtime> runtimes;
-	vector<unsigned long long int> attempts;
-	vector<string> passwords;
-	Runtime avg;
-	Runtime min;
-	Runtime max;
+	vector<PasswordData> pwData;
+	Runtime avg_run;
+	Runtime totalRuntime;
+	pair<Runtime, int> min;
+	pair<Runtime, int> max;
 	double avg_len;
 public:
 	Statistics();
-	void averageRuntime();
-	void averageLength();
+	void setPwData(vector<PasswordData> p);
 	void summary();
 	void calculate();
-	void setRuntimes(vector<Runtime> r);
-	void setAttempts(vector<unsigned long long int> a);
-	void setPasswords(vector<string> p);
 };
 
 Statistics::Statistics()
 {
-	avg.zero();
-	min.zero();
-	max.zero();
+	avg_run.zero();
+	min.first.zero();
+	max.first.zero();
+	totalRuntime.zero();
 }
 
-void Statistics::setRuntimes(vector<Runtime> r)
+void Statistics::setPwData(vector<PasswordData> p)
 {
-	runtimes = r;
-}
-
-void Statistics::setAttempts(vector<unsigned long long int> a)
-{
-	attempts = a;
-}
-
-void Statistics::setPasswords(vector<string> p)
-{
-	passwords = p;
+	pwData = p;
 }
 
 void Statistics::calculate()
 {
-	min = *min_element(runtimes.begin(), runtimes.end());
-	max = *max_element(runtimes.begin(), runtimes.end());
-	averageLength();
-	averageRuntime();
+	min.first = max.first = pwData[0].runtime;
+	double totalLetters = 0;
+	totalRuntime += pwData[0].runtime;
+	for (int i = 1; i < pwData.size(); i++)
+	{
+		if (pwData[i].runtime < min.first)
+		{
+			min.first = pwData[i].runtime;
+			min.second = i;
+		}
+
+		if (pwData[i].runtime > max.first)
+		{
+			max.first = pwData[i].runtime;
+			max.second = i;
+		}
+		totalRuntime += pwData[i].runtime;
+		totalLetters += pwData[i].password.length();
+	}
+	avg_run = totalRuntime / pwData.size();
+	avg_len = totalLetters / pwData.size();
 }
 
-void Statistics::averageRuntime()
-{
-	Runtime total;
-	for (int i = 0; i < runtimes.size(); i++)
-		total += runtimes[i];
-	avg = total / (runtimes.size());
-}
-
-void Statistics::averageLength()
-{
-	int total;
-	for (auto i : passwords)
-		total += i.length();
-	avg_len = total / passwords.size();
-}
 
 void Statistics::summary()
 {
-	cout << "Average runtime: " << blue << static_cast<PrintableRuntime>(avg).count();
-	cout << "ms for " << passwords.size() << " passwords.\n" << white;
-	cout << "Min runtime: " << green << static_cast<PrintableRuntime>(min).count() << "ms\t" << white;
-	cout << "Max runtime: " << red << static_cast<PrintableRuntime>(max).count() << "ms\n" << white;
+	cout << "Average runtime: " << blue << static_cast<PrintableRuntime>(avg_run).count();
+	cout << "ms" << white << " for " << pwData.size() << " passwords.\n";
+	cout << "Min runtime: " << green << pwData[min.second] << white;
+	cout << "Max runtime: " << red << pwData[max.second] << white;
+	cout << "Average pw length: " << fixed << setprecision(2) << avg_len << " characters.\n";
+}
+
+vector<PasswordData> buildPwData(vector<string> p, vector<unsigned long long int> a, vector<Runtime> r)
+{
+	vector<PasswordData> pwData;
+	for (int i = 0; i < p.size(); i++)
+	{
+		PasswordData tempData(r[i], a[i], p[i]);
+		pwData.push_back(tempData);
+	}
+	return pwData;
 }
 
 int main()
@@ -416,14 +470,16 @@ int main()
 		timer.batchFinish();
 		plaintext.reset();
 	}
+	vector<PasswordData> pwData = buildPwData(plaintext.getPwset(), plaintext.getAttempts(), timer.getRuntimeData());
 
 	// calculate runtime data
 	Statistics statistics;
-	statistics.setRuntimes(timer.getRuntimeData());
-	statistics.setPasswords(plaintext.getPwset());
-	statistics.setAttempts(plaintext.getAttempts());
+	statistics.setPwData(pwData);
 	statistics.calculate();
 	statistics.summary();
+
+	cout << "Printing password data:\n";
+	printVector(pwData);
 
 	system("pause");
 	return 0;
