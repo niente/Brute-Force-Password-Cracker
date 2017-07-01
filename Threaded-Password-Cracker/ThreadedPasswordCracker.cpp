@@ -14,13 +14,17 @@
 #include <cctype>
 #include <algorithm>
 #include <numeric>
+#include <condition_variable>
+#include <future>
+#include <atomic>
 
 using namespace std;
 
 #define LOWER_ALPHA_START 97
 #define LOWER_ALPHA_END 122
-#define MAX_CHARS 2
-#define LOWER_ALPHA "abcdef" //"abcdefghijklmnopqrstuvwxyz"
+#define MAX_CHARS 5
+#define LOWER_ALPHA "abcdefghijklmnopqrstuvwxyz"
+#define DUMMY_TRAILER "\177"
 
 typedef chrono::duration<double> Runtime;
 
@@ -50,20 +54,16 @@ private:
 	string charSet;
 	int fastLetter;
 	int slowLetter;
-	bool found;
-	int i;
-	thread t1;
-	//thread t2;
-	void startThread();
-	void stopThread();
+	atomic<bool> found;
 public:
 	PlainTextCracker();
-	bool bruteForce(int start);
+	string bruteForce();
 	void crack();
 	void calculateMaxAttempts();
 	void setPassword(string p);
 	void reset();
 	void setType(string s);
+	
 };
 
 PlainTextCracker::PlainTextCracker()
@@ -72,7 +72,6 @@ PlainTextCracker::PlainTextCracker()
 	maxAttempts = 0;
 	fastLetter = 0;
 	slowLetter = 0;
-	i = 0;
 	inputPassword = "";
 	charSet = "";
 	found = false;
@@ -81,7 +80,6 @@ PlainTextCracker::PlainTextCracker()
 void PlainTextCracker::setPassword(string p)
 {
 	inputPassword = p;
-	
 }
 
 void PlainTextCracker::setType(string set)
@@ -89,33 +87,15 @@ void PlainTextCracker::setType(string set)
 	charSet = set;
 }
 
-// OR call the function before starting the thread!
-//thread t1(printAscii, 32, 79);
-//fun();
-//thread t2(printAscii, 80, 127);
-//t1.join(); // JOIN the thread before executing other functions.
-//t2.join();
-
 void PlainTextCracker::crack()
 {
-	/// start threads here.
-	/// one thread gets 0, one gets 13
-	/// write something that stops both threads if one of them finds the password
-	/// compare the runtime for these
-	/// (4 char pws ~64ms without threading)
-	startThread();
-	stopThread();
-	if (found)
-		cout << green << "The password is: " << outputPassword << white;
+	future<string> outputPassword = async(launch::deferred, &PlainTextCracker::bruteForce, this);
+	string result = outputPassword.get();
+	if (result != DUMMY_TRAILER)
+		cout << green << "The password is: " << result << white;
 	else
 		cout << red << "\nCouldn't find the password!" << white;
 	cout << "\nTotal attempts: " << yellow << attempts << white << endl;
-}
-
-void PlainTextCracker::startThread()
-{
-	//t1 = thread(std::bind(&PlainTextCracker::bruteForce, 0));
-	t1 = thread(&PlainTextCracker::bruteForce, this, 0);
 }
 
 void PlainTextCracker::calculateMaxAttempts()
@@ -126,38 +106,31 @@ void PlainTextCracker::calculateMaxAttempts()
 	cout << "Max attempts for a password of length " << MAX_CHARS << ": " << maxAttempts << "\n";
 }
 
-bool PlainTextCracker::bruteForce(int i)
+string PlainTextCracker::bruteForce()
 {
 	char s[] = "\n";
 	char *newline = s;
-	char guess[MAX_CHARS + 1];
+	
 	int last = charSet.size() - 1;
 
 	cout << "charSet: " << charSet << endl;
-
+	char guess[MAX_CHARS + 1];
 	resize(guess, '\0', sizeof(guess));
-	//guess[0] = charSet[0];
-	guess[i] = charSet[i];
+	guess[0] = charSet[0];
 
 	while (attempts < maxAttempts)
 	{
-		for (int letterIndex = i; letterIndex < charSet.size(); letterIndex++)
+		for (int letterIndex = 0; letterIndex < charSet.size(); letterIndex++)
 		{
 			guess[slowLetter] = charSet[letterIndex];
-			theMutex.lock(); // LOCK
-			cout << this_thread::get_id() << ": ";
-			cout << "guess: " << guess << " charSet[i]: " << charSet[letterIndex] << "\n";
-			fastPrint(guess, newline);
+			//fastPrint(guess, newline);
 			attempts++;
-			theMutex.unlock();  // UNLOCK
 			if (guess == inputPassword)
 			{
 				outputPassword = guess;
-				
 				found = true;
-				return true;
+				return outputPassword;
 			}
-
 			if (attempts > maxAttempts) break;
 		}
 		for (fastLetter = slowLetter; fastLetter >= 0; fastLetter--)
@@ -172,19 +145,14 @@ bool PlainTextCracker::bruteForce(int i)
 				if (isFinished(fastLetter))
 				{
 					++slowLetter;
-					resize(guess, static_cast<int>(charSet[i]), slowLetter + 1);
+					resize(guess, static_cast<int>(charSet[0]), slowLetter + 1);
 					break;
 				}
-				guess[fastLetter] = charSet[i];
+				guess[fastLetter] = charSet[0];
 			}
 		}
 	}
-	return false;
-}
-
-void PlainTextCracker::stopThread()
-{
-	t1.join();
+	return DUMMY_TRAILER;
 }
 
 void PlainTextCracker::reset()
@@ -193,6 +161,7 @@ void PlainTextCracker::reset()
 	outputPassword.clear();
 	attempts = 0;
 	slowLetter = 0;
+	found = false;
 }
 
 class Timer
@@ -203,7 +172,6 @@ private:
 	vector <Runtime> runtimeData;
 	time_t end;
 public:
-	//Timer();
 	void start();
 	void stop();
 	void calculate();
@@ -212,13 +180,6 @@ public:
 	void batchFinish();
 	vector<Runtime> getRuntimeData();
 };
-
-
-
-//Timer::Timer()
-//{
-//	
-//}
 
 void Timer::start()
 {
@@ -295,8 +256,9 @@ Password::Password()
 
 bool Password::isValid(string s)
 {
-	if (all_of(s.begin(), s.end(), [&](char c) { return isInSet(c); }))
-		return true;
+	if (!s.empty())
+		if (all_of(s.begin(), s.end(), [&](char c) { return isInSet(c); }))
+			return true;
 	cout << red << "This password contains invalid characters for the selected set!\n";
 	cout << "Use only the following characters: " << charSet << "\n" << white;
 	return false;
@@ -328,6 +290,8 @@ string Password::promptUser()
 
 void Password::trim(string text)
 {
+	if (text.empty())
+		return;
 	string whitespace = "\040\t";
 	auto front = text.find_first_not_of(whitespace);
 	auto back = text.find_last_not_of(whitespace);
@@ -367,11 +331,6 @@ void Statistics::average()
 
 }
 
-void printAscii(int start, int limit);
-void fun();
-
-///////////////////////////////////////////
-
 int main()
 {
 	cout << "This program will guess your password.\n";
@@ -402,43 +361,6 @@ int main()
 	Statistics statistics(timer.getRuntimeData());
 	statistics.average();
 
-	// OR call the function before starting the thread!
-	//thread t1(printAscii, 32, 79);
-	//fun();
-	//thread t2(printAscii, 80, 127);
-	//t1.join(); // JOIN the thread before executing other functions.
-	//t2.join();
-
 	system("pause");
 	return 0;
-}
-
-void fun()
-{
-	cout << "I wonder";
-	cout << " what kind of things ";
-	cout << "are happening while";
-	cout << " a thread is running ";
-	cout << "from a previous statement?\n";
-}
-
-void printAscii(int startIndex, int limit)
-{
-	//cout << (char)7 << "\fastLetter"; // ASCII #7 = BELL
-	int j = 0;
-	for (int i = startIndex; i < limit; i++)
-	{
-		//lock_guard<mutex> guard(theMutex); // this makes it so only ONE thread executes this function at a time, until it finishes (exits scope)
-		theMutex.lock(); // a good way to protect only one line (1/2)
-		cout << this_thread::get_id() << ": " << i << ":[" << (char)i << "]\t";
-		theMutex.unlock();  // a good way to protect only one line (2/2)
-		if ((i + 1) % 5 == 0)
-		{
-			cout << "\n";
-			cout << cstream[j % 5];
-			j++;
-			this_thread::sleep_for(500ms);
-		}
-	}
-	cout << "\n";
 }
