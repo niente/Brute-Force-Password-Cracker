@@ -192,4 +192,5 @@ Printing password data:
 1031.18ms to find [facet] in 2761610 attempts.
 2332.82ms to find [mmmmm] in 6178315 attempts.
 
-Press any key to continue . . .```
+Press any key to continue . . .
+```
