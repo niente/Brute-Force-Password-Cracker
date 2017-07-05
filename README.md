@@ -4,6 +4,8 @@ Accepts user input for a 5 letter password (a-z). Returns the password, time, an
 
 Sample output:
 
+![Sample output image](http://i.imgur.com/OeLibDW.png "Short sample run")
+
 ```This program will guess your password.
 You may only use a-z, and 1-5 characters.
 Type Q to quit.
